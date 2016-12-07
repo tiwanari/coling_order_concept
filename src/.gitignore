@@ -1,0 +1,7 @@
+*.o
+main
+debug*
+test
+t
+obj/
+out/

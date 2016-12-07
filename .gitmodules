@@ -1,0 +1,12 @@
+[submodule "googletest"]
+	path = googletest
+	url = https://chromium.googlesource.com/external/github.com/google/googletest/
+	ignore = dirty
+[submodule "xz"]
+	path = xz
+	url = http://git.tukaani.org/xz.git
+	ignore = dirty
+[submodule "tools/svr/liblinear"]
+	path = tools/svr/liblinear
+	url = https://github.com/cjlin1/liblinear
+	ignore = dirty

@@ -1,0 +1,10 @@
+# Mac
+.DS_Store
+a.out
+.*
+!.gitignore
+
+# Output
+gen/
+*perf*
+tmp/

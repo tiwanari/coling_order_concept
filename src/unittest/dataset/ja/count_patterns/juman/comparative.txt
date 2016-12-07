@@ -1,0 +1,2 @@
+より !ADJECTIVE
+ほど !NEG_ADJECTIVE

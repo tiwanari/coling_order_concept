@@ -1,0 +1,9 @@
+mkindex
+prediction
+tmp/
+log.txt
+res.txt
+
+index/nouns
+index/adjs
+

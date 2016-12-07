@@ -1,0 +1,31 @@
+diff -uprN src/liblinear-ranksvm-2.1/predict.c liblinear-ranksvm-2.1/predict.c
+--- src/liblinear-ranksvm-2.1/predict.c	2016-01-27 08:17:55.000000000 +0900
++++ liblinear-ranksvm-2.1/predict.c	2016-02-10 12:35:13.000000000 +0900
+@@ -103,6 +103,9 @@ void do_predict(FILE *input, FILE *outpu
+ 		if(label == NULL) // empty line
+ 			exit_input_error(total+1);
+ 
++		if (label[0] == '#')
++			continue;
++
+ 		target_label = strtod(label,&endptr);
+ 		if(endptr == label || *endptr != '\0')
+ 			exit_input_error(total+1);
+@@ -273,4 +276,3 @@ int main(int argc, char **argv)
+ 	fclose(output);
+ 	return 0;
+ }
+-
+diff -uprN src/liblinear-ranksvm-2.1/train.c liblinear-ranksvm-2.1/train.c
+--- src/liblinear-ranksvm-2.1/train.c	2016-01-27 08:17:56.000000000 +0900
++++ liblinear-ranksvm-2.1/train.c	2016-02-10 12:33:54.000000000 +0900
+@@ -416,6 +416,9 @@ void read_problem(const char *filename)
+ 		if(label == NULL) // empty line
+ 			exit_input_error(i+1);
+ 
++		if (label[0] == '#')
++			continue;
++
+ 		prob.y[i] = strtod(label,&endptr);
+ 		if(endptr == label || *endptr != '\0')
+ 			exit_input_error(i+1);

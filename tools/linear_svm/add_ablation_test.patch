@@ -1,0 +1,220 @@
+diff -urpN liblinear-ranksvm-2.1/predict.c ../linear_svm_up/liblinear-ranksvm-2.1/predict.c
+--- liblinear-ranksvm-2.1/predict.c	2016-04-02 17:03:26.272205000 +0900
++++ ../linear_svm_up/liblinear-ranksvm-2.1/predict.c	2016-04-09 19:43:46.801219000 +0900
+@@ -16,6 +16,8 @@ int max_nr_attr = 64;
+ 
+ struct model* model_;
+ int flag_predict_probability=0;
++int flag_ablation_test=0;
++int* ablation_ids;
+ 
+ void exit_input_error(int line_num)
+ {
+@@ -113,6 +115,8 @@ void do_predict(FILE *input, FILE *outpu
+ 
+ 		while(1)
+ 		{
++			int k;
++			int index_in_int;
+ 			if(i>=max_nr_attr-2)	// need one more for index = -1
+ 			{
+ 				max_nr_attr *= 2;
+@@ -125,6 +129,17 @@ void do_predict(FILE *input, FILE *outpu
+ 			if(val == NULL)
+ 				break;
+ 
++			index_in_int = (int) strtol(idx, &endptr, 10);
++			int is_ablation = false;
++			for (k = 0; k < flag_ablation_test; ++k)
++				if (index_in_int == ablation_ids[k]) {
++					is_ablation = true;
++					break;
++				}
++
++			if (is_ablation)
++				continue;
++
+ 			if (strcmp(idx,"qid") == 0)
+ 			{
+ 				errno = 0;
+@@ -134,7 +149,7 @@ void do_predict(FILE *input, FILE *outpu
+ 				continue;
+ 			}
+ 			errno = 0;
+-			x[i].index = (int) strtol(idx,&endptr,10);
++			x[i].index = index_in_int;
+ 			if(endptr == idx || errno != 0 || *endptr != '\0' || x[i].index <= inst_max_index)
+ 				exit_input_error(total+1);
+ 			else
+@@ -213,16 +228,46 @@ void exit_with_help()
+ 	printf(
+ 	"Usage: predict [options] test_file model_file output_file\n"
+ 	"options:\n"
++	"-a ablation test: feature ids which will be ignored (e.g. -a \"1&2\" to ignore column 1 & 2). please specify the same ids you selected for training\n"
+ 	"-b probability_estimates: whether to output probability estimates, 0 or 1 (default 0); currently for logistic regression only\n"
+ 	"-q : quiet mode (no outputs)\n"
+ 	);
+ 	exit(1);
+ }
+ 
++// e.g. str = "1&2&33" -> ids = {1, 2, 33}, and return 3 (the number of elements)
++int split_string_into_ids(char* str, int** ids)
++{
++	int max_num_ids = 1; // starts with 1 (e.g. "1&2" -> #ids = 2)
++	int i;
++	// count the number of ids by checking delimiters
++	for (i = 0; str[i] != '\0'; ++i)
++		if (str[i] == '&')
++			max_num_ids++;
++	*ids = (int *)malloc(max_num_ids * sizeof(int));
++
++	int k = 0;
++	char *num_str, *p;
++	for (num_str = str, p = str; p != NULL;)
++	{
++		p = strchr(num_str, '&');
++		if (p != NULL)	// NULL -> the num_str originally has '\0'
++			*p = '\0';
++
++		int tmp_num;
++		tmp_num = atoi(num_str);
++		num_str = p + 1;
++		if (tmp_num <= 0) // check it is positive
++			continue;
++		(*ids)[k++] = tmp_num;
++	}
++	return k;
++}
++
+ int main(int argc, char **argv)
+ {
+ 	FILE *input, *output;
+-	int i;
++	int i, j;
+ 
+ 	// parse options
+ 	for(i=1;i<argc;i++)
+@@ -231,6 +276,13 @@ int main(int argc, char **argv)
+ 		++i;
+ 		switch(argv[i-1][1])
+ 		{
++			case 'a':
++				// this flag is the number of ids
++				flag_ablation_test = split_string_into_ids(argv[i], &ablation_ids);
++				info("%d features (%s) will be ablated\n", flag_ablation_test, argv[i]);
++				for (j = 0; j < flag_ablation_test; j++)
++					printf("%d will be ignored\n", ablation_ids[j]);
++				break;
+ 			case 'b':
+ 				flag_predict_probability = atoi(argv[i]);
+ 				break;
+diff -urpN liblinear-ranksvm-2.1/train.c ../linear_svm_up/liblinear-ranksvm-2.1/train.c
+--- liblinear-ranksvm-2.1/train.c	2016-04-02 17:03:26.274204000 +0900
++++ ../linear_svm_up/liblinear-ranksvm-2.1/train.c	2016-04-09 19:43:33.355147000 +0900
+@@ -16,6 +16,7 @@ void exit_with_help()
+ 	printf(
+ 	"Usage: train [options] training_set_file [model_file]\n"
+ 	"options:\n"
++	"-a ablation test: feature ids which will be ignored (e.g. -a \"1&2\" to ignore column 1 & 2)\n"
+ 	"-s type : set type of solver (default 8)\n"
+ 	"  for multi-class classification\n"
+ 	"	 0 -- L2-regularized logistic regression (primal)\n"
+@@ -100,6 +101,8 @@ int flag_C_specified;
+ int flag_solver_specified;
+ int nr_fold;
+ double bias;
++int flag_ablation_test=0;	// # of ablation ids
++int* ablation_ids;
+ 
+ int main(int argc, char **argv)
+ {
+@@ -209,9 +212,38 @@ void do_cross_validation()
+ 	free(target);
+ }
+ 
+-void parse_command_line(int argc, char **argv, char *input_file_name, char *model_file_name)
++// e.g. str = "1&2&33" -> ids = {1, 2, 33}, and return 3 (the number of elements)
++int split_string_into_ids(char* str, int** ids)
+ {
++	int max_num_ids = 1; // starts with 1 (e.g. "1&2" -> #ids = 2)
+ 	int i;
++	// count the number of ids by checking delimiters
++	for (i = 0; str[i] != '\0'; ++i)
++		if (str[i] == '&')
++			max_num_ids++;
++	*ids = (int *)malloc(max_num_ids * sizeof(int));
++
++	int k = 0;
++	char *num_str, *p;
++	for (num_str = str, p = str; p != NULL;)
++	{
++		p = strchr(num_str, '&');
++		if (p != NULL)	// NULL -> the num_str originally has '\0'
++			*p = '\0';
++
++		int tmp_num;
++		tmp_num = atoi(num_str);
++		num_str = p + 1;
++		if (tmp_num <= 0) // check it is positive
++			continue;
++		(*ids)[k++] = tmp_num;
++	}
++	return k;
++}
++
++void parse_command_line(int argc, char **argv, char *input_file_name, char *model_file_name)
++{
++	int i, j;
+ 	void (*print_func)(const char*) = NULL;	// default printing to stdout
+ 
+ 	// default values
+@@ -237,6 +269,14 @@ void parse_command_line(int argc, char *
+ 			exit_with_help();
+ 		switch(argv[i-1][1])
+ 		{
++			case 'a':
++				// this flag is the number of ids
++				flag_ablation_test = split_string_into_ids(argv[i], &ablation_ids);
++				printf("%d features (%s) will be ablated\n", flag_ablation_test, argv[i]);
++				for (j = 0; j < flag_ablation_test; j++)
++					printf("%d will be ignored\n", ablation_ids[j]);
++				break;
++
+ 			case 's':
+ 				param.solver_type = atoi(argv[i]);
+ 				flag_solver_specified = 1;
+@@ -425,12 +465,25 @@ void read_problem(const char *filename)
+ 
+ 		while(1)
+ 		{
++			int k;
++			int index_in_int;
+ 			idx = strtok(NULL,":");
+ 			val = strtok(NULL," \t");
+ 
+ 			if(val == NULL)
+ 				break;
+ 
++			index_in_int = (int) strtol(idx, &endptr, 10);
++			int is_ablation = false;
++			for (k = 0; k < flag_ablation_test; ++k)
++				if (index_in_int == ablation_ids[k]) {
++					is_ablation = true;
++					break;
++				}
++
++			if (is_ablation)
++				continue;
++
+ 			if (strcmp(idx,"qid") == 0)
+ 			{
+ 				errno = 0;
+@@ -440,7 +493,7 @@ void read_problem(const char *filename)
+ 				continue;
+ 			}
+ 			errno = 0;
+-			x_space[j].index = (int) strtol(idx,&endptr,10);
++			x_space[j].index = index_in_int;
+ 			if(endptr == idx || errno != 0 || *endptr != '\0' || x_space[j].index <= inst_max_index)
+ 				exit_input_error(i+1);
+ 			else
